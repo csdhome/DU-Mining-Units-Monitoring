@@ -5,14 +5,22 @@ system.print("DU-Mining-Units-Monitoring version " .. version)
 system.print("----------------------------------------")
 
 fontSize = 25 --export: font size for each line on the screen
-calibrationSecondsRedLevel = 604800 --export: The time in seconds from last calibration above the time will be displayed in red. Default to 259200 (3 days / 72h)
-calibrationSecondsYellowLevel = 86400 --export: The time in seconds from last calibration above the time will be displayed in yellow. Default to 86400 (1 day / 24h)
-calibrationGracePeriodHours = 72 --export: MyDU only: The number of hours before the calibration start to lower (server setting)
-calibrationCooldownHour = 24 --export: MyDU only: the number of hours between two calibration are possible (server setting)
+calibrationSecondsRedLevel = 2592000 --export: The time in seconds from last calibration above the time will be displayed in red. Default to 259200 (3 days / 72h)
+calibrationSecondsYellowLevel = 1987200 --export: The time in seconds from last calibration above the time will be displayed in yellow. Default to 86400 (1 day / 24h)
+calibrationGracePeriodHours = 720 --export: MyDU only: The number of hours before the calibration start to lower (server setting)
+calibrationCooldownHour = 18 --export: MyDU only: the number of hours between two calibration are possible (server setting)
 
+scriptData = {}
+function GetRenderScript()
 local renderScript = [[
+
+]]
+.. RS.serializer ..
+[[
+
 local json = require('json')
-local fromScript = json.decode(getInput()) or {}
+local fromScript = ]]..serialize(scriptData)..[[
+
 pool = fromScript[1] or {}
 data = fromScript[2] or {}
 images = {}
@@ -140,8 +148,8 @@ function renderResistanceBar(ore_id, status, time, prod_rate, calibration, optim
     end
 
     local CalibrationTimeColorLayer = storageGreen
-    if cal_time > 86400 then CalibrationTimeColorLayer = storageYellow end
-    if cal_time > 259200 then CalibrationTimeColorLayer = storageRed end
+    if cal_time > ]]..calibrationSecondsYellowLevel..[[ then CalibrationTimeColorLayer = storageYellow end
+    if cal_time > ]]..calibrationSecondsRedLevel..[[ then CalibrationTimeColorLayer = storageRed end
 
     addBox(storageBar,x,y,w,h)
 
@@ -197,7 +205,8 @@ function renderPool(pool)
     local nb_col = 1
     for k,v in pairs(pool) do nb_col = nb_col + 1 end
     local n = 1
-    for k,v in pairs(pool) do
+    table.sort(pool)
+    for k,v in pairsByKeys(pool) do
         setNextTextAlign(storageBar, AlignH_Center, AlignV_Bottom)
         addText(storageBar, small, v[3], (rx/nb_col)*n, ry-h-h_factor)
         if isImageLoaded(images[k]) then
@@ -207,6 +216,26 @@ function renderPool(pool)
         addText(storageBar, itemNameSmall, format_number(round(v[1])) .. " / " .. format_number(round(v[2])), (rx/nb_col)*n+5, ry-(h/2)-h_factor)
         n = n + 1
     end
+end
+
+function pairsByKeys(t)
+  -- Create an array of the keys
+  local keys = {}
+  for k in pairs(t) do
+    table.insert(keys, k)
+  end
+
+  -- Sort the keys
+  table.sort(keys)
+
+  -- Return an iterator function
+  local i = 0
+  return function()
+    i = i + 1
+    if keys[i] then
+      return keys[i], t[keys[i] ]
+    end
+  end
 end
 
 renderHeader('MINING UNITS MONITORING v]] .. version .. [[')
@@ -223,6 +252,8 @@ if fromScript[1] then
 end
 requestAnimationFrame(10)
 ]]
+return renderScript
+end
 
 screens = {}
 mining_units = {}
@@ -234,7 +265,7 @@ for slot_name, slot in pairs(unit) do
         slot.slotname = slot_name
         if slot.getClass():lower() == 'screenunit' then
             table.insert(screens,slot)
-            slot.setRenderScript(renderScript)
+            slot.setRenderScript(GetRenderScript())
         elseif slot.getClass():lower() == 'miningunit' then
             table.insert(mining_units,slot)
         end
@@ -270,6 +301,7 @@ MyCoroutines = {
         pool = {}
         for index, mu in ipairs(mining_units) do
             local mup = mu.getOrePools()
+
             for _,p in ipairs(mup) do
                 if ores[p.id] == nil then
                     local item_data = system.getItem(p.id)
@@ -294,11 +326,11 @@ MyCoroutines = {
             coroutine.yield(coroutinesTable[1])
         end
         for index, screen in pairs(screens) do
-            local toSend = {
+            scriptData = {
                 pool,
                 screen_data
             }
-            screen.setScriptInput(json.encode(toSend))
+            screen.setRenderScript(GetRenderScript())
         end
     end
 }
@@ -324,3 +356,5 @@ runCoroutines = function()
 end
 
 MainCoroutine = coroutine.create(runCoroutines)
+
+
